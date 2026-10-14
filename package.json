@@ -1,0 +1,13 @@
+{
+  "name": "car-race-online",
+  "version": "1.0.0",
+  "description": "online car race - two players collect coins side by side",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "socket.io": "^4.8.0"
+  }
+}

@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: car-race-online
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start

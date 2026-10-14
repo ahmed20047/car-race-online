@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>سباق الكوينات - أونلاين</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: "Cairo", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+      color: #eee;
+      padding: 16px;
+      touch-action: manipulation;
+    }
+
+    .container { width: 100%; max-width: 430px; text-align: center; }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 900;
+      margin-bottom: 20px;
+      background: linear-gradient(90deg, #f9d423, #ff4e50);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 24px;
+      backdrop-filter: blur(10px);
+    }
+
+    .btn {
+      font-family: inherit;
+      font-size: 1.05rem;
+      font-weight: 700;
+      padding: 14px 24px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 12px;
+      transition: transform 0.15s, filter 0.15s;
+    }
+    .btn:hover { transform: translateY(-2px); filter: brightness(1.15); }
+    .btn-primary { background: linear-gradient(90deg, #f9d423, #f6962e); color: #1a1a2e; }
+    .btn-secondary { background: rgba(78, 205, 196, 0.2); color: #4ecdc4; border: 2px solid #4ecdc4; }
+
+    input {
+      font-family: inherit;
+      width: 100%;
+      padding: 14px;
+      margin-top: 12px;
+      border-radius: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.25);
+      color: #fff;
+      font-size: 1.1rem;
+      text-align: center;
+    }
+    input:focus { outline: none; border-color: #4ecdc4; }
+    input::placeholder { color: rgba(255,255,255,0.4); font-size: 1rem; }
+
+    #codeInput { letter-spacing: 8px; text-transform: uppercase; direction: ltr; font-size: 1.2rem; }
+
+    .error { color: #ff6b6b; margin-top: 10px; font-size: 0.95rem; min-height: 1.4em; }
+    .hidden { display: none; }
+
+    /* ---- شاشة اللعبة ---- */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      gap: 8px;
+    }
+    .room-code {
+      font-size: 1.2rem;
+      font-weight: 900;
+      letter-spacing: 5px;
+      direction: ltr;
+      color: #ffd93d;
+      user-select: all;
+      cursor: pointer;
+      background: rgba(0,0,0,0.3);
+      border-radius: 10px;
+      padding: 6px 12px;
+    }
+    .score-pill {
+      font-size: 1.15rem;
+      font-weight: 900;
+      background: rgba(0,0,0,0.3);
+      border-radius: 10px;
+      padding: 6px 14px;
+    }
+    .score-pill .me { color: #f9d423; }
+    .score-pill .him { color: #4ecdc4; }
+
+    #gameCanvas {
+      width: 100%;
+      border-radius: 14px;
+      display: block;
+      touch-action: none;
+      background: #262626;
+    }
+
+    .status {
+      font-size: 1.1rem;
+      font-weight: 700;
+      min-height: 1.8em;
+      margin: 12px 0 4px;
+    }
+    .status .waiting { color: #ffd93d; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 50% { opacity: 0.5; } }
+
+    .result { font-size: 1.6rem; font-weight: 900; min-height: 1.5em; }
+    .result.win { color: #f9d423; }
+    .result.lose { color: #ff6b6b; }
+
+    .hint-line { font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏎️ سباق الكوينات</h1>
+
+    <!-- شاشة البداية -->
+    <div id="homeScreen" class="card">
+      <input id="nickInput" maxlength="15" placeholder="اكتب اسمك هنا" autocomplete="off" />
+      <button class="btn btn-primary" id="createBtn">🏁 أنشئ غرفة جديدة</button>
+      <div style="margin: 16px 0 2px; color: rgba(255,255,255,0.5);">— أو —</div>
+      <input id="codeInput" maxlength="4" placeholder="اكتب كود الغرفة" autocomplete="off" />
+      <button class="btn btn-secondary" id="joinBtn">🚪 ادخل الغرفة</button>
+      <div class="error" id="errorMsg"></div>
+      <div class="hint-line">اول واحد يجمع 15 كوينة يكسب 🪙</div>
+    </div>
+
+    <!-- شاشة اللعبة -->
+    <div id="gameScreen" class="card hidden">
+      <div class="top-bar">
+        <div class="room-code" id="roomCode" title="اضغط للنسخ">----</div>
+        <div class="score-pill"><span class="me" id="scoreMe">0</span> : <span class="him" id="scoreHim">0</span></div>
+      </div>
+
+      <canvas id="gameCanvas" width="380" height="460"></canvas>
+
+      <div class="status" id="status"></div>
+      <div class="result" id="result"></div>
+      <button class="btn btn-secondary hidden" id="rematchBtn">🔄 سباق جديد</button>
+      <button class="btn btn-primary" id="leaveBtn" style="margin-top:12px">🚪 خروج من الغرفة</button>
+      <div class="hint-line">اسحب بإيدك عشان تحرك العربية — أو استخدم الأسهم ⬅️➡️</div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    // ---- عناصر الشاشة ----
+    const homeScreen = document.getElementById("homeScreen");
+    const gameScreen = document.getElementById("gameScreen");
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const statusEl = document.getElementById("status");
+    const resultEl = document.getElementById("result");
+    const rematchBtn = document.getElementById("rematchBtn");
+    const errorMsg = document.getElementById("errorMsg");
+    const nickInput = document.getElementById("nickInput");
+    const roomCodeEl = document.getElementById("roomCode");
+    const scoreMeEl = document.getElementById("scoreMe");
+    const scoreHimEl = document.getElementById("scoreHim");
+
+    const WIN_SCORE = 15;
+    let myRole = null;
+    let state = null;          // آخر حالة من السيرفر
+    let myCarX = 0.5;          // مكان عربيتی محلياً (أسرع من انتظار السيرفر)
+    let coinsLocal = [];       // بنحركها محلياً بين تحديثات السيرفر عشان البساطة
+    let lastUpdate = 0;
+    let roadOffset = 0;        // للخطوط اللي بتتحرك (إحساس السرعة)
+    let lastFrame = 0;
+
+    nickInput.value = localStorage.getItem("race-nickname") || "";
+
+    // ---- الدخول ----
+    function getNickname() {
+      const nick = nickInput.value.trim();
+      if (!nick) {
+        errorMsg.textContent = "اكتب اسمك الأول 😄";
+        nickInput.focus();
+        return null;
+      }
+      localStorage.setItem("race-nickname", nick);
+      errorMsg.textContent = "";
+      return nick;
+    }
+
+    document.getElementById("createBtn").addEventListener("click", () => {
+      const nick = getNickname();
+      if (nick) socket.emit("createRoom", nick);
+    });
+    document.getElementById("joinBtn").addEventListener("click", () => {
+      const nick = getNickname();
+      if (!nick) return;
+      const code = document.getElementById("codeInput").value.trim();
+      if (code.length !== 4) {
+        errorMsg.textContent = "الكود لازم يكون 4 حروف";
+        return;
+      }
+      socket.emit("joinRoom", { code, nickname: nick });
+    });
+    document.getElementById("codeInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") document.getElementById("joinBtn").click();
+    });
+    document.getElementById("leaveBtn").addEventListener("click", () => location.reload());
+    rematchBtn.addEventListener("click", () => socket.emit("rematch"));
+
+    roomCodeEl.addEventListener("click", () => {
+      navigator.clipboard.writeText(roomCodeEl.textContent).then(() => {
+        roomCodeEl.title = "✅ اتنسخ!";
+        setTimeout(() => (roomCodeEl.title = "اضغط للنسخ"), 1500);
+      });
+    });
+
+    socket.on("joined", (data) => {
+      myRole = data.myRole;
+      roomCodeEl.textContent = data.code;
+      homeScreen.classList.add("hidden");
+      gameScreen.classList.remove("hidden");
+      applyState(data.state);
+      if (!rafStarted) { rafStarted = true; requestAnimationFrame(frame); }
+    });
+
+    socket.on("gameState", applyState);
+
+    socket.on("error-msg", (msg) => {
+      errorMsg.textContent = msg;
+    });
+
+    function applyState(s) {
+      const prevCoins = coinsLocal;
+      state = s;
+
+      // نزامن الكوينات مع السيرفر — نحافظ على المكان المحلي للكوينات الموجودة
+      coinsLocal = s.coins.map((c) => {
+        const old = prevCoins.find((o) => o.id === c.id);
+        // لو الفرق كبير (كوينة جديدة أو تصحيح كبير) ناخد مكان السيرفر على طول
+        return { id: c.id, x: c.x, y: old && Math.abs(old.y - c.y) < 0.15 ? old.y : c.y };
+      });
+
+      // عربيتي من عندي، بتاع صاحبكي من السيرفر
+      if (s.cars) {
+        const himRole = myRole === "p1" ? "p2" : "p1";
+        himCarX = s.cars[himRole];
+      }
+
+      scoreMeEl.textContent = s.scores[myRole] ?? 0;
+      scoreHimEl.textContent = s.scores[myRole === "p1" ? "p2" : "p1"] ?? 0;
+
+      // الحالة
+      resultEl.textContent = "";
+      resultEl.className = "result";
+      rematchBtn.classList.add("hidden");
+
+      if (s.playerCount < 2 || s.phase === "waiting") {
+        statusEl.innerHTML = '<span class="waiting">⏳ مستني صاحبك يدخل بالكود...</span>';
+        return;
+      }
+      if (s.phase === "finished") {
+        statusEl.textContent = "خلص السباق!";
+        if (s.winner === myRole) {
+          resultEl.textContent = "🏆 كسبت يا " + s.names[myRole] + "!";
+          resultEl.className = "result win";
+        } else {
+          resultEl.textContent = "💨 خسرت المرة دي";
+          resultEl.className = "result lose";
+        }
+        rematchBtn.classList.remove("hidden");
+        if (s.rematchVotes > 0) statusEl.textContent = "⏳ صاحبك عايز سباق جديد...";
+        return;
+      }
+      statusEl.textContent = "🪙 " + s.scores[myRole] + " / " + WIN_SCORE + " — يلا يا بطل!";
+    }
+
+    // ---- التحكم ----
+    let himCarX = 0.5;
+    const keys = {};
+
+    function setMyCarX(x) {
+      myCarX = Math.min(1, Math.max(0, x));
+      // نبعت المكان بس لما يتغير بشكل ملحوظ (عشان ما نزحمش الشبكة)
+      if (Math.abs(myCarX - lastSentX) > 0.02) {
+        lastSentX = myCarX;
+        socket.emit("move", myCarX);
+      }
+    }
+    let lastSentX = 0.5;
+
+    // السحب باللمس أو الماوس
+    function pointerX(e) {
+      const rect = canvas.getBoundingClientRect();
+      return ((e.touches ? e.touches[0].clientX : e.clientX) - rect.left) / rect.width;
+    }
+    function onDrag(e) {
+      if (!myRole) return;
+      e.preventDefault();
+      // طريقي هو النص اليمين من الكانفاس
+      const px = pointerX(e);
+      const roadStart = 0.5, roadW = 0.46;
+      if (px >= roadStart) setMyCarX((px - roadStart) / roadW);
+    }
+    canvas.addEventListener("touchstart", onDrag, { passive: false });
+    canvas.addEventListener("touchmove", onDrag, { passive: false });
+    canvas.addEventListener("mousedown", (e) => { dragging = true; onDrag(e); });
+    window.addEventListener("mousemove", (e) => { if (dragging) onDrag(e); });
+    window.addEventListener("mouseup", () => (dragging = false));
+    let dragging = false;
+
+    // الكيبورد
+    window.addEventListener("keydown", (e) => {
+      if (["ArrowLeft", "ArrowRight", "a", "d", "A", "D"].includes(e.key)) keys[e.key] = true;
+    });
+    window.addEventListener("keyup", (e) => (keys[e.key] = false));
+
+    // ---- حلقة الرسم ----
+    let rafStarted = false;
+    const COIN_LOCAL_SPEED = 0.018 / 0.05; // نفس سرعة السيرفر بالثانية
+
+    function frame(now) {
+      const dt = Math.min(50, now - (lastFrame || now));
+      lastFrame = now;
+
+      // حركة عربيتی بالكيبورد
+      const dir = (keys.ArrowLeft || keys.a || keys.A ? -1 : 0) + (keys.ArrowRight || keys.d || keys.D ? 1 : 0);
+      if (dir !== 0) setMyCarX(myCarX + dir * dt * 0.0016);
+
+      // تحريك الكوينات محلياً بين تحديثات السيرفر (نفس السرعة بالظبط)
+      for (const c of coinsLocal) c.y += COIN_LOCAL_SPEED * (dt / 1000);
+      roadOffset = (roadOffset + dt * 0.35) % 60;
+
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    function draw() {
+      const W = canvas.width, H = canvas.height;
+      const roadW = W * 0.46;
+      const myRoadX = W * 0.52;   // طريقي يمين
+      const himRoadX = W * 0.02;  // طريق صاحبي شمال
+
+      ctx.clearRect(0, 0, W, H);
+
+      // الأسفلت
+      ctx.fillStyle = "#2b2b2b";
+      ctx.fillRect(himRoadX, 0, roadW, H);
+      ctx.fillRect(myRoadX, 0, roadW, H);
+
+      // حواف الطريق
+      ctx.fillStyle = "#f5f5f5";
+      ctx.fillRect(himRoadX - 3, 0, 4, H);
+      ctx.fillRect(himRoadX + roadW, 0, 4, H);
+      ctx.fillRect(myRoadX - 3, 0, 4, H);
+      ctx.fillRect(myRoadX + roadW, 0, 4, H);
+
+      // خطوط بتتحرك (إحساس السرعة)
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([25, 35]);
+      for (const rx of [himRoadX, myRoadX]) {
+        ctx.beginPath();
+        ctx.moveTo(rx + roadW / 2, roadOffset - 60);
+        ctx.lineTo(rx + roadW / 2, H);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      if (!state) return;
+
+      // الكوينات — على الطريقين (نفس الكوين للاتنين، عادل)
+      for (const c of coinsLocal) {
+        const px = c.x * roadW;
+        const py = c.y * H;
+        if (py < -20 || py > H + 20) continue;
+        for (const rx of [himRoadX, myRoadX]) {
+          ctx.font = "26px serif";
+          ctx.textAlign = "center";
+          ctx.fillText("🪙", rx + px, py);
+        }
+      }
+
+      // عربية صاحبي (شمال)
+      drawCar(himRoadX + himCarX * roadW, H * 0.85, "🚙", state.names[myRole === "p1" ? "p2" : "p1"] || "...");
+      // عربيتی (يمين)
+      drawCar(myRoadX + myCarX * roadW, H * 0.85, "🚗", state.names[myRole] || "...");
+    }
+
+    function drawCar(cx, cy, emoji, name) {
+      ctx.font = "38px serif";
+      ctx.textAlign = "center";
+      ctx.fillText(emoji, cx, cy);
+
+      // اسم اللاعب تحت العربية
+      ctx.font = "bold 13px Cairo, sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fillText(name, cx, cy + 22);
+
+      // ظل صغير تحت العربية
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 8, 20, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  </script>
+</body>
+</html>
