@@ -12,11 +12,14 @@ const io = new Server(server);
 app.use(express.static("public"));
 
 // ============ إعدادات اللعبة ============
-const WIN_SCORE = 15;        // عدد الكوينات اللي تكسر بيها
-const TICK = 50;             // سرعة حلقة اللعبة (20 مرة في الثانية)
-const COIN_SPEED = 0.018;    // قد إيه الكوينة بتنزل في كل تكة (من ارتفاع الطريق)
-const CAR_WIDTH = 0.17;      // عرض العربية كنسبة من عرض الطريق
-const CATCH_TOP = 0.78;      // منطقة الالتقاط — الكوينة بتتحسب لو دخلت النطاق ده
+const WIN_SCORE = Number(process.env.WIN_SCORE) || 50; // عدد الكوينات اللي تكسر بيها
+const TICK = 50;               // سرعة حلقة اللعبة (20 مرة في الثانية)
+const COIN_SPEED = 0.34;       // سرعة النزول في أول اللعبة (نص الطريق في الثانية تقريباً)
+const SPEED_PER_LEVEL = 0.09;  // كل ليفيل بيزود السرعة قد إيه
+const MAX_SPEED = 0.88;        // أقصى سرعة
+const LEVEL_MS = 10000;        // كل قد إحة ليفيل جديد
+const CAR_WIDTH = 0.17;        // عرض العربية كنسبة من عرض الطريق
+const CATCH_TOP = 0.78;        // منطقة الالتقاط — أي حاجة توصل النطاق ده بتتحسب
 const CATCH_BOTTOM = 0.92;
 
 const rooms = {};
@@ -45,9 +48,12 @@ function createRoom(nickname) {
     names: { p1: nickname, p2: "" },
     scores: { p1: 0, p2: 0 },
     cars: { p1: 0.5, p2: 0.5 },         // مكان العربية على الطريق (0 لـ 1)
-    coins: [],                          // { id, x, y }
-    nextCoinId: 1,
-    spawnTimer: 800,                    // بعد كام ملي ثانية كوينة جديدة
+    items: [],                          // الحاجات النازلة: { id, x, y, type: "coin" | "obstacle" }
+    nextItemId: 1,
+    coinTimer: 800,                     // عداد كوينات جديدة
+    obstacleTimer: 2500,                // عداد عواقب جديدة
+    elapsed: 0,                         // طول السباق — بيحدد الليفيل
+    level: 0,                           // كل ليفيل = أسرع + عواقب أكتر
     phase: "waiting",                   // waiting | racing | finished
     winner: null,                       // "p1" / "p2"
     rematchVotes: new Set(),
@@ -66,7 +72,7 @@ function cleanupEmptyRooms() {
 }
 
 // ============ حلقة اللعبة — بتشتغل على السيرفر بس ============
-// العملاء بيبعتوا مكان العربية بس، والسيرفر هو اللي بيحرك الكوينات ويحسب الالتقاط
+// العملاء بيبعتوا مكان العربية بس، والسيرفر هو اللي بيحرك الحاجات ويحسب
 function startLoop(room) {
   if (room.loop) return;
   room.loop = setInterval(() => tick(room), TICK);
@@ -79,33 +85,51 @@ function stopLoop(room) {
   }
 }
 
+function currentSpeed(room) {
+  return Math.min(MAX_SPEED, COIN_SPEED + room.level * SPEED_PER_LEVEL);
+}
+
 function tick(room) {
   if (room.phase !== "racing") return;
 
-  // نطلع كوينة جديدة لو جه وقتها
-  room.spawnTimer -= TICK;
-  if (room.spawnTimer <= 0) {
-    room.coins.push({ id: room.nextCoinId++, x: 0.08 + Math.random() * 0.84, y: -0.05 });
-    room.spawnTimer = 400 + Math.random() * 400;
+  room.elapsed += TICK;
+  room.level = Math.floor(room.elapsed / LEVEL_MS);
+  const speed = currentSpeed(room);
+
+  // كوينات جديدة
+  room.coinTimer -= TICK;
+  if (room.coinTimer <= 0) {
+    room.items.push({ id: room.nextItemId++, x: 0.08 + Math.random() * 0.84, y: -0.05, type: "coin" });
+    room.coinTimer = 400 + Math.random() * 400;
   }
 
-  // نحرك الكوينات ونشوف حد لحق ياخد حاجة
-  for (let i = room.coins.length - 1; i >= 0; i--) {
-    const coin = room.coins[i];
-    coin.y += COIN_SPEED;
-    if (coin.y > 1.05) {
-      room.coins.splice(i, 1); // عدّت من تحت
+  // عواقب — عددها ومعدل ظهورهم بيزيد مع الليفيلات
+  room.obstacleTimer -= TICK;
+  if (room.obstacleTimer <= 0) {
+    const count = 1 + Math.floor(room.level / 2); // كل ليفيلين = عوقبة إضافية
+    for (let i = 0; i < count; i++) {
+      room.items.push({ id: room.nextItemId++, x: 0.08 + Math.random() * 0.84, y: -0.05, type: "obstacle" });
+    }
+    room.obstacleTimer = Math.max(1000, 3000 - room.level * 300);
+  }
+
+  // تحريك الحاجات وحساب الالتقاط والخبطة
+  for (let i = room.items.length - 1; i >= 0; i--) {
+    const item = room.items[i];
+    item.y += speed * (TICK / 1000);
+    if (item.y > 1.05) {
+      room.items.splice(i, 1); // عدّت من تحت
       continue;
     }
-    if (coin.y >= CATCH_TOP && coin.y <= CATCH_BOTTOM) {
-      const d1 = Math.abs(coin.x - room.cars.p1);
-      const d2 = Math.abs(coin.x - room.cars.p2);
-      // الأقرب هو اللي بياخدها (لو الاتنين تحت
-      if (d1 <= CAR_WIDTH && d1 <= d2) {
-        collect(room, "p1", i);
-      } else if (d2 <= CAR_WIDTH) {
-        collect(room, "p2", i);
-      }
+    if (item.y < CATCH_TOP || item.y > CATCH_BOTTOM) continue;
+
+    const d1 = Math.abs(item.x - room.cars.p1);
+    const d2 = Math.abs(item.x - room.cars.p2);
+    // الأقرب هو اللي بيتم معاه الحاجة
+    if (d1 <= CAR_WIDTH && d1 <= d2) {
+      resolveItem(room, "p1", item, i);
+    } else if (d2 <= CAR_WIDTH) {
+      resolveItem(room, "p2", item, i);
     }
   }
 
@@ -117,9 +141,14 @@ function tick(room) {
   }
 }
 
-function collect(room, role, coinIndex) {
-  room.coins.splice(coinIndex, 1);
-  room.scores[role]++;
+// اللاعب "role" التقط العنصر: كوين = +1، عوقبة = -1 (ومش بنطيب السالب)
+function resolveItem(room, role, item, index) {
+  room.items.splice(index, 1);
+  if (item.type === "coin") {
+    room.scores[role]++;
+  } else {
+    room.scores[role] = Math.max(0, room.scores[role] - 1);
+  }
   if (room.scores[role] >= WIN_SCORE) {
     room.phase = "finished";
     room.winner = role;
@@ -130,11 +159,12 @@ function collect(room, role, coinIndex) {
 function roomState(room, myRole) {
   return {
     phase: room.phase,
-    coins: room.coins,
+    items: room.items,
     scores: room.scores,
     cars: room.cars,
     names: room.names,
     winner: room.winner,
+    level: room.level,
     myRole,
     playerCount: Object.keys(room.players).length,
     rematchVotes: room.rematchVotes.size,
@@ -227,8 +257,7 @@ io.on("connection", (socket) => {
       stopLoop(room);
       room.phase = "waiting";
       room.winner = null;
-      room.coins = [];
-      room.scores = { p1: 0, p2: 0 };
+      resetRace(room);
       room.rematchVotes.clear();
       broadcast(room);
     }
@@ -244,13 +273,17 @@ io.on("connection", (socket) => {
   }
 
   function resetRace(room) {
-    room.coins = [];
+    room.items = [];
     room.scores = { p1: 0, p2: 0 };
     room.cars = { p1: 0.5, p2: 0.5 };
-    room.spawnTimer = 800;
+    room.coinTimer = 800;
+    room.obstacleTimer = 2500;
+    room.elapsed = 0;
+    room.level = 0;
   }
 });
 
+// Render بيدينا البورت من متغير البيئة، ومحلياً بنستخدم 3001
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`اللعبة شغالة على http://localhost:${PORT}`);

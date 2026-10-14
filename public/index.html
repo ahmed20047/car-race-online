@@ -143,7 +143,7 @@
       <input id="codeInput" maxlength="4" placeholder="اكتب كود الغرفة" autocomplete="off" />
       <button class="btn btn-secondary" id="joinBtn">🚪 ادخل الغرفة</button>
       <div class="error" id="errorMsg"></div>
-      <div class="hint-line">اول واحد يجمع 15 كوينة يكسب 🪙</div>
+      <div class="hint-line">اول واحد يجمع 50 كوينة يكسب 🪙 — وخلي بالك من العواقب 🚧 كل خبطة بخصمك كوينة!</div>
     </div>
 
     <!-- شاشة اللعبة -->
@@ -159,7 +159,7 @@
       <div class="result" id="result"></div>
       <button class="btn btn-secondary hidden" id="rematchBtn">🔄 سباق جديد</button>
       <button class="btn btn-primary" id="leaveBtn" style="margin-top:12px">🚪 خروج من الغرفة</button>
-      <div class="hint-line">اسحب بإيدك عشان تحرك العربية — أو استخدم الأسهم ⬅️➡️</div>
+      <div class="hint-line">اسحب بإيدك عشان تحرك العربية — أو استخدم الأسهم ⬅️➡️ — واللعبة بتزيد سرعة كل شوية!</div>
     </div>
   </div>
 
@@ -181,11 +181,11 @@
     const scoreMeEl = document.getElementById("scoreMe");
     const scoreHimEl = document.getElementById("scoreHim");
 
-    const WIN_SCORE = 15;
+    const WIN_SCORE = 50;
     let myRole = null;
     let state = null;          // آخر حالة من السيرفر
     let myCarX = 0.5;          // مكان عربيتی محلياً (أسرع من انتظار السيرفر)
-    let coinsLocal = [];       // بنحركها محلياً بين تحديثات السيرفر عشان البساطة
+    let itemsLocal = [];       // الحاجات النازلة — بنحركها محلياً بين تحديثات السيرفر
     let lastUpdate = 0;
     let roadOffset = 0;        // للخطوط اللي بتتحرك (إحساس السرعة)
     let lastFrame = 0;
@@ -248,14 +248,14 @@
     });
 
     function applyState(s) {
-      const prevCoins = coinsLocal;
+      const prevItems = itemsLocal;
       state = s;
 
-      // نزامن الكوينات مع السيرفر — نحافظ على المكان المحلي للكوينات الموجودة
-      coinsLocal = s.coins.map((c) => {
-        const old = prevCoins.find((o) => o.id === c.id);
-        // لو الفرق كبير (كوينة جديدة أو تصحيح كبير) ناخد مكان السيرفر على طول
-        return { id: c.id, x: c.x, y: old && Math.abs(old.y - c.y) < 0.15 ? old.y : c.y };
+      // نزامن الحاجات مع السيرفر — نحافظ على المكان المحلي لللي موجودين
+      itemsLocal = (s.items || []).map((c) => {
+        const old = prevItems.find((o) => o.id === c.id);
+        // لو الفرق كبير (حاجة جديدة أو تصحيح كبير) ناخد مكان السيرفر على طول
+        return { id: c.id, x: c.x, y: old && Math.abs(old.y - c.y) < 0.2 ? old.y : c.y, type: c.type };
       });
 
       // عربيتي من عندي، بتاع صاحبكي من السيرفر
@@ -289,7 +289,7 @@
         if (s.rematchVotes > 0) statusEl.textContent = "⏳ صاحبك عايز سباق جديد...";
         return;
       }
-      statusEl.textContent = "🪙 " + s.scores[myRole] + " / " + WIN_SCORE + " — يلا يا بطل!";
+      statusEl.textContent = "🪙 " + s.scores[myRole] + " / " + WIN_SCORE + (s.level > 0 ? "  ⚡ السرعة x" + (s.level + 1) : "") + " — يلا يا بطل!";
     }
 
     // ---- التحكم ----
@@ -334,7 +334,6 @@
 
     // ---- حلقة الرسم ----
     let rafStarted = false;
-    const COIN_LOCAL_SPEED = 0.018 / 0.05; // نفس سرعة السيرفر بالثانية
 
     function frame(now) {
       const dt = Math.min(50, now - (lastFrame || now));
@@ -344,9 +343,10 @@
       const dir = (keys.ArrowLeft || keys.a || keys.A ? -1 : 0) + (keys.ArrowRight || keys.d || keys.D ? 1 : 0);
       if (dir !== 0) setMyCarX(myCarX + dir * dt * 0.0016);
 
-      // تحريك الكوينات محلياً بين تحديثات السيرفر (نفس السرعة بالظبط)
-      for (const c of coinsLocal) c.y += COIN_LOCAL_SPEED * (dt / 1000);
-      roadOffset = (roadOffset + dt * 0.35) % 60;
+      // تحريك الحاجات محلياً بين تحديثات السيرفر (بنسرعة الليفل الحالي)
+      const localSpeed = 0.34 + (state?.level || 0) * 0.09;
+      for (const c of itemsLocal) c.y += localSpeed * (dt / 1000);
+      roadOffset = (roadOffset + dt * (0.35 + (state?.level || 0) * 0.12)) % 60;
 
       draw();
       requestAnimationFrame(frame);
@@ -386,15 +386,16 @@
 
       if (!state) return;
 
-      // الكوينات — على الطريقين (نفس الكوين للاتنين، عادل)
-      for (const c of coinsLocal) {
+      // الحاجات — على الطريقين (نفس المكان للاتنين، عادل): كوينات وعواقب
+      for (const c of itemsLocal) {
         const px = c.x * roadW;
         const py = c.y * H;
         if (py < -20 || py > H + 20) continue;
+        const emoji = c.type === "obstacle" ? "🚧" : "🪙";
         for (const rx of [himRoadX, myRoadX]) {
-          ctx.font = "26px serif";
+          ctx.font = c.type === "obstacle" ? "30px serif" : "26px serif";
           ctx.textAlign = "center";
-          ctx.fillText("🪙", rx + px, py);
+          ctx.fillText(emoji, rx + px, py);
         }
       }
 
