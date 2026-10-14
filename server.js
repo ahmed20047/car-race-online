@@ -12,12 +12,13 @@ const io = new Server(server);
 app.use(express.static("public"));
 
 // ============ إعدادات اللعبة ============
-const WIN_SCORE = Number(process.env.WIN_SCORE) || 50; // عدد الكوينات اللي تكسر بيها
+const RACE_MS = Number(process.env.RACE_MS) || 120000; // طول السباق — دقيقتين
 const TICK = 50;               // سرعة حلقة اللعبة (20 مرة في الثانية)
 const COIN_SPEED = 0.34;       // سرعة النزول في أول اللعبة (نص الطريق في الثانية تقريباً)
-const SPEED_PER_LEVEL = 0.09;  // كل ليفيل بيزود السرعة قد إيه
-const MAX_SPEED = 0.88;        // أقصى سرعة
+const MAX_SPEED_X = 6;         // أقصى سرعة = 6 أضعاف سرعة البداية
 const LEVEL_MS = 10000;        // كل قد إحة ليفيل جديد
+// السرعة بتزيد تدريجي عشان توصل x6 بالظبط في آخر اللعبة
+const SPEED_STEP = (MAX_SPEED_X - 1) / (RACE_MS / LEVEL_MS);
 const CAR_WIDTH = 0.17;        // عرض العربية كنسبة من عرض الطريق
 const CATCH_TOP = 0.78;        // منطقة الالتقاط — أي حاجة توصل النطاق ده بتتحسب
 const CATCH_BOTTOM = 0.92;
@@ -86,7 +87,7 @@ function stopLoop(room) {
 }
 
 function currentSpeed(room) {
-  return Math.min(MAX_SPEED, COIN_SPEED + room.level * SPEED_PER_LEVEL);
+  return COIN_SPEED * Math.min(MAX_SPEED_X, 1 + room.level * SPEED_STEP);
 }
 
 function tick(room) {
@@ -103,14 +104,25 @@ function tick(room) {
     room.coinTimer = 400 + Math.random() * 400;
   }
 
-  // عواقب — عددها ومعدل ظهورهم بيزيد مع الليفيلات
+  // عواقب — عددها ومعدل ظهورهم بيزيد مع الليفيلات (بسفي حد أقصى معقول)
   room.obstacleTimer -= TICK;
   if (room.obstacleTimer <= 0) {
-    const count = 1 + Math.floor(room.level / 2); // كل ليفيلين = عوقبة إضافية
+    const count = Math.min(4, 1 + Math.floor(room.level / 2));
     for (let i = 0; i < count; i++) {
       room.items.push({ id: room.nextItemId++, x: 0.08 + Math.random() * 0.84, y: -0.05, type: "obstacle" });
     }
     room.obstacleTimer = Math.max(1000, 3000 - room.level * 300);
+  }
+
+  // الوقت خلص؟ اللي جمع أكتر كوينات هو الفايز
+  if (room.elapsed >= RACE_MS) {
+    room.phase = "finished";
+    if (room.scores.p1 > room.scores.p2) room.winner = "p1";
+    else if (room.scores.p2 > room.scores.p1) room.winner = "p2";
+    else room.winner = null; // تعادل
+    broadcast(room);
+    stopLoop(room);
+    return;
   }
 
   // تحريك الحاجات وحساب الالتقاط والخبطة
@@ -133,12 +145,7 @@ function tick(room) {
     }
   }
 
-  if (room.phase === "finished") {
-    broadcast(room);
-    stopLoop(room); // اللعبة خلصت — نوقف الحلقة
-  } else {
-    broadcast(room);
-  }
+  broadcast(room);
 }
 
 // اللاعب "role" التقط العنصر: كوين = +1، عوقبة = -1 (ومش بنطيب السالب)
@@ -148,10 +155,6 @@ function resolveItem(room, role, item, index) {
     room.scores[role]++;
   } else {
     room.scores[role] = Math.max(0, room.scores[role] - 1);
-  }
-  if (room.scores[role] >= WIN_SCORE) {
-    room.phase = "finished";
-    room.winner = role;
   }
 }
 
@@ -165,6 +168,8 @@ function roomState(room, myRole) {
     names: room.names,
     winner: room.winner,
     level: room.level,
+    speedX: currentSpeed(room) / COIN_SPEED, // مضاعف السرعة — للعرض
+    remaining: Math.max(0, RACE_MS - room.elapsed), // الوقت المتبقي
     myRole,
     playerCount: Object.keys(room.players).length,
     rematchVotes: room.rematchVotes.size,

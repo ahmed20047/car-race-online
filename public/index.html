@@ -143,7 +143,7 @@
       <input id="codeInput" maxlength="4" placeholder="اكتب كود الغرفة" autocomplete="off" />
       <button class="btn btn-secondary" id="joinBtn">🚪 ادخل الغرفة</button>
       <div class="error" id="errorMsg"></div>
-      <div class="hint-line">اول واحد يجمع 50 كوينة يكسب 🪙 — وخلي بالك من العواقب 🚧 كل خبطة بخصمك كوينة!</div>
+      <div class="hint-line">سباق دقيقتين ⏱️ — اللي يجمع كوينات أكتر في الآخر يكسب 🪙 — وخلي بالك من العواقب 🚧</div>
     </div>
 
     <!-- شاشة اللعبة -->
@@ -181,7 +181,6 @@
     const scoreMeEl = document.getElementById("scoreMe");
     const scoreHimEl = document.getElementById("scoreHim");
 
-    const WIN_SCORE = 50;
     let myRole = null;
     let state = null;          // آخر حالة من السيرفر
     let myCarX = 0.5;          // مكان عربيتی محلياً (أسرع من انتظار السيرفر)
@@ -277,8 +276,11 @@
         return;
       }
       if (s.phase === "finished") {
-        statusEl.textContent = "خلص السباق!";
-        if (s.winner === myRole) {
+        statusEl.textContent = "خلص الوقت! ⏱️";
+        if (s.winner === null) {
+          resultEl.textContent = "🤝 تعادل!";
+          resultEl.className = "result";
+        } else if (s.winner === myRole) {
           resultEl.textContent = "🏆 كسبت يا " + s.names[myRole] + "!";
           resultEl.className = "result win";
         } else {
@@ -289,7 +291,11 @@
         if (s.rematchVotes > 0) statusEl.textContent = "⏳ صاحبك عايز سباق جديد...";
         return;
       }
-      statusEl.textContent = "🪙 " + s.scores[myRole] + " / " + WIN_SCORE + (s.level > 0 ? "  ⚡ السرعة x" + (s.level + 1) : "") + " — يلا يا بطل!";
+      // العد التنازلي
+      const secLeft = Math.ceil((s.remaining || 0) / 1000);
+      const mm = Math.floor(secLeft / 60), ss = String(secLeft % 60).padStart(2, "0");
+      const speedTxt = s.speedX > 1.05 ? "  ⚡ x" + s.speedX.toFixed(1) : "";
+      statusEl.textContent = "⏱️ " + mm + ":" + ss + "  —  🪙 " + s.scores[myRole] + speedTxt + " — يلا يا بطل!";
     }
 
     // ---- التحكم ----
@@ -343,10 +349,10 @@
       const dir = (keys.ArrowLeft || keys.a || keys.A ? -1 : 0) + (keys.ArrowRight || keys.d || keys.D ? 1 : 0);
       if (dir !== 0) setMyCarX(myCarX + dir * dt * 0.0016);
 
-      // تحريك الحاجات محلياً بين تحديثات السيرفر (بنسرعة الليفل الحالي)
-      const localSpeed = 0.34 + (state?.level || 0) * 0.09;
-      for (const c of itemsLocal) c.y += localSpeed * (dt / 1000);
-      roadOffset = (roadOffset + dt * (0.35 + (state?.level || 0) * 0.12)) % 60;
+      // تحريك الحاجات محلياً بين تحديثات السيرفر (بنسرعة السيرفر الحالية)
+      const speedX = state?.speedX || 1;
+      for (const c of itemsLocal) c.y += 0.34 * speedX * (dt / 1000);
+      roadOffset = (roadOffset + dt * 0.35 * speedX) % 60;
 
       draw();
       requestAnimationFrame(frame);

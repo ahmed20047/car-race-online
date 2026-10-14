@@ -1,8 +1,8 @@
 # car-race-online
 
-online racing game for two players. the screen is split in two roads side by side - each player sees their own car and the opponent's. coins fall on both roads, first one to grab 50 coins wins.
+online racing game for two players. the screen is split in two roads side by side - each player sees their own car and the opponent's. each race lasts 2 minutes - whoever collected more coins when the timer hits zero wins.
 
-obstacles appear on the road - hitting one costs you a coin. the game speeds up every 10 seconds and more obstacles start falling each level.
+obstacles appear on the road - hitting one costs you a coin. the game speeds up every 10 seconds (up to 6x at the end) and more obstacles start falling each level.
 
 built with node.js + socket.io. the server runs the whole game loop (spawns coins, moves them, decides who caught what) - the browser only sends the car position, so there is nothing to cheat with.
 
